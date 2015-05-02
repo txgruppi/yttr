@@ -9,7 +9,6 @@ This project is a cli client for the [yttr.co](https://yttr.co) website.
 ## Todo
 
 - Better README
-- Pre-compiled binaries
 - Comments / Docs
 - More tests
 - CI

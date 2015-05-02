@@ -1,6 +1,6 @@
 package yttr
 
-const (
+var (
 	Name    = "yttr"
-	Version = "0.0.0"
+	Version = "dev"
 )
