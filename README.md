@@ -1,6 +1,6 @@
 # Yttr cli
 
-This project is a cli client for the (yttr.co)[https://yttr.co] website.
+This project is a cli client for the [yttr.co](https://yttr.co) website.
 
 ## Install
 
