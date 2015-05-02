@@ -2,18 +2,25 @@ package main
 
 import (
 	"fmt"
+	"mime"
 	"os"
+	"path"
+	"strings"
 
+	"github.com/bartmeuris/progressio"
 	"github.com/codegangsta/cli"
 	"github.com/txgruppi/yttr"
 )
 
 const (
-	ECUknownErr   = 127
-	ECNoApiPair   = 126
-	ECNoFile      = 125
-	ECYttrFileErr = 124
-	ECUploadErr   = 123
+	ECUknownErr           = 127
+	ECNoApiPair           = 126
+	ECNoFile              = 125
+	ECYttrFileErr         = 124
+	ECUploadErr           = 123
+	ECCantOpenFileErr     = 122
+	ECCantStatFileErr     = 121
+	ECFileNotSupportedErr = 120
 )
 
 func main() {
@@ -44,6 +51,10 @@ func main() {
 			Usage: "After how many days the file must expire. Can be 1, 4 or 12. Default 1",
 			Value: 1,
 		},
+		cli.BoolFlag{
+			Name:  "quiet, q",
+			Usage: "Do not print transfer information",
+		},
 	}
 	app.Action = func(c *cli.Context) {
 		var exitCode int
@@ -68,6 +79,7 @@ func run(c *cli.Context) int {
 	secret := c.String("secret")
 	downloadOnly := c.Bool("downloadOnly")
 	expire := c.Int("expire")
+	quiet := c.Bool("quiet")
 
 	if len(key) != 40 || len(secret) != 40 {
 		fmt.Fprintf(os.Stderr, "A API key/secret pair is required.\n")
@@ -79,14 +91,43 @@ func run(c *cli.Context) int {
 		return ECNoFile
 	}
 
-	yFile, err := yttr.NewFileFromPath(c.Args()[0], expire, downloadOnly)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Can't create a yttr.File: %s\n", err.Error())
-		return ECYttrFileErr
+	mimeType := mime.TypeByExtension(path.Ext(c.Args()[0]))
+	if mimeType == "" {
+		fmt.Fprintf(os.Stderr, "This file type is not supported.")
+		return ECFileNotSupportedErr
 	}
 
+	if strings.IndexRune(mimeType, ';') != -1 {
+		mimeType = strings.SplitN(mimeType, ";", 2)[0]
+	}
+
+	stat, err := os.Stat(c.Args()[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can't stat file: %s\n", err.Error())
+		return ECCantStatFileErr
+	}
+
+	file, err := os.Open(c.Args()[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can't open file: %s\n", err.Error())
+		return ECCantOpenFileErr
+	}
+
+	var yFile yttr.File
+	var pCh <-chan progressio.Progress
+	if quiet {
+		yFile = yttr.NewFile(file, stat.Name(), mimeType, stat.Size(), expire, downloadOnly)
+	} else {
+		var pReader *progressio.ProgressReader
+		pReader, pCh = progressio.NewProgressReader(file, stat.Size())
+		yFile = yttr.NewFile(pReader, stat.Name(), mimeType, stat.Size(), expire, downloadOnly)
+	}
 	req := yttr.NewUploadRequest(yFile)
 	api := yttr.NewAPI(key, secret)
+
+	if !quiet {
+		go reportProgress(pCh)
+	}
 
 	res, err := api.Upload(req)
 	if err != nil {
@@ -99,7 +140,23 @@ func run(c *cli.Context) int {
 		}
 	}
 
-	fmt.Println(res.URL().String())
+	if quiet {
+		fmt.Println(res.URL().String())
+	} else {
+		fmt.Println("\n" + res.URL().String())
+	}
 
 	return 0
+}
+
+func reportProgress(ch <-chan progressio.Progress) {
+	for p := range ch {
+		fmt.Fprintf(
+			os.Stderr,
+			"%d / %d (%.2f%%)\r",
+			p.Transferred,
+			p.TotalSize,
+			p.Percent,
+		)
+	}
 }

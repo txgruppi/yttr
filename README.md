@@ -10,7 +10,6 @@ This project is a cli client for the [yttr.co](https://yttr.co) website.
 
 - Better README
 - Pre-compiled binaries
-- Upload progress
 - Comments / Docs
 - More tests
 - CI
